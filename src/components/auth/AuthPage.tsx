@@ -41,6 +41,8 @@ export function AuthPage({ role }: AuthPageProps) {
     // Store pending role in localStorage before redirect
     if (typeof window !== "undefined") {
       localStorage.setItem("pendingRole", role);
+      // Set a cookie so the server-side signIn callback can check the intended role
+      document.cookie = `padhai_intended_role=${role}; path=/; max-age=300; SameSite=Lax`;
     }
     signIn("google", {
       callbackUrl: `/dashboard/${role}?role=${role}`,
