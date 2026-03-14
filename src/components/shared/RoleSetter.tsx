@@ -1,17 +1,18 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 
 /**
  * RoleSetter — reads `?role=` from the URL after OAuth redirect
  * and calls /api/user/set-role to assign the role in the DB.
- * Rendered inside dashboard layouts.
+ * If the role is not authorized (403), redirects to /access-denied.
  */
 export function RoleSetter() {
   const searchParams = useSearchParams();
   const { data: session } = useSession();
+  const router = useRouter();
   const calledRef = useRef(false);
 
   useEffect(() => {
@@ -26,16 +27,21 @@ export function RoleSetter() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, role }),
     })
-      .then((res) => {
+      .then(async (res) => {
         if (res.ok) {
           // Remove ?role= from URL without reload
           const url = new URL(window.location.href);
           url.searchParams.delete("role");
           window.history.replaceState({}, "", url.pathname);
+        } else {
+          // Not authorized for this role — redirect to access-denied
+          router.replace("/access-denied");
         }
       })
-      .catch(console.error);
-  }, [searchParams, session]);
+      .catch(() => {
+        router.replace("/access-denied");
+      });
+  }, [searchParams, session, router]);
 
   return null;
 }

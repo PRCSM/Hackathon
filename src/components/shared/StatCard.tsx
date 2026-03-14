@@ -6,7 +6,7 @@ import React, { useEffect, useRef, useState } from "react";
 
 interface StatCardProps {
   icon: LucideIcon;
-  value: number;
+  value: number | string;
   label: string;
   trend?: {
     value: string;
@@ -22,18 +22,19 @@ export function StatCard({
   trend,
   className,
 }: StatCardProps) {
+  const isNumeric = typeof value === "number";
   const [displayValue, setDisplayValue] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
   const hasAnimated = useRef(false);
 
   useEffect(() => {
-    if (hasAnimated.current) return;
+    if (!isNumeric || hasAnimated.current) return;
 
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting && !hasAnimated.current) {
           hasAnimated.current = true;
-          animateValue(0, value, 1000);
+          animateValue(0, value as number, 1000);
           observer.disconnect();
         }
       },
@@ -42,7 +43,7 @@ export function StatCard({
 
     if (ref.current) observer.observe(ref.current);
     return () => observer.disconnect();
-  }, [value]);
+  }, [value, isNumeric]);
 
   function animateValue(start: number, end: number, duration: number) {
     const startTime = performance.now();
@@ -82,7 +83,7 @@ export function StatCard({
           lineHeight: 1.15,
         }}
       >
-        {new Intl.NumberFormat("en-IN").format(displayValue)}
+        {isNumeric ? new Intl.NumberFormat("en-IN").format(displayValue) : value}
       </div>
       <div
         className="text-sm font-medium"

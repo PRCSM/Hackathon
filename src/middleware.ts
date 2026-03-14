@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// Lightweight middleware — checks for session cookie
-// Full auth validation happens in server components and API routes
+/**
+ * Middleware — checks for session cookie on protected routes.
+ * Role-based access is enforced via the session callback and API routes.
+ */
 export function middleware(request: NextRequest) {
-  // In development, allow access without authentication
-  if (process.env.NODE_ENV === "development") {
-    return NextResponse.next();
-  }
-
   const sessionCookie =
     request.cookies.get("authjs.session-token") ||
     request.cookies.get("__Secure-authjs.session-token");
