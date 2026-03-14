@@ -12,6 +12,7 @@ Triggered by S3 upload events. Processes educational materials through:
 
 import json
 import os
+import time
 import urllib.parse
 import boto3
 import psycopg2
@@ -117,16 +118,56 @@ def lambda_handler(event, context):
 
 
 def extract_text(bucket: str, key: str) -> str:
-    """Extract text from document using Textract."""
+    """Extract text from document using Textract.
+
+    Uses synchronous detection for images and asynchronous detection for
+    multi-page PDFs (which the synchronous API does not support).
+    """
+    lower_key = key.lower()
+    is_pdf = lower_key.endswith(".pdf")
+
+    if is_pdf:
+        # Async Textract path — supports multi-page PDFs
+        start_response = textract.start_document_text_detection(
+            DocumentLocation={"S3Object": {"Bucket": bucket, "Name": key}}
+        )
+        job_id = start_response["JobId"]
+
+        # Poll until the job completes (Lambda timeout is up to 15 min)
+        while True:
+            result = textract.get_document_text_detection(JobId=job_id)
+            status = result["JobStatus"]
+            if status == "SUCCEEDED":
+                break
+            if status == "FAILED":
+                raise RuntimeError(f"Textract async job failed for key: {key}")
+            time.sleep(5)
+
+        # Collect text from all pages (handle pagination)
+        text_blocks = []
+        next_token = None
+        while True:
+            kwargs = {"JobId": job_id}
+            if next_token:
+                kwargs["NextToken"] = next_token
+            page_result = textract.get_document_text_detection(**kwargs)
+            for block in page_result.get("Blocks", []):
+                if block["BlockType"] == "LINE":
+                    text_blocks.append(block.get("Text", ""))
+            next_token = page_result.get("NextToken")
+            if not next_token:
+                break
+
+        return "\n".join(text_blocks)
+
+    # Synchronous path — images and single-page documents
     response = textract.detect_document_text(
         Document={"S3Object": {"Bucket": bucket, "Name": key}}
     )
-
     text_blocks = []
     for block in response.get("Blocks", []):
         if block["BlockType"] == "LINE":
             text_blocks.append(block.get("Text", ""))
-
     return "\n".join(text_blocks)
 
 
@@ -190,17 +231,28 @@ Return ONLY valid JSON, no other text."""
         contentType="application/json",
         accept="application/json",
         body=json.dumps({
-            "inputText": prompt,
-            "textGenerationConfig": {
-                "maxTokenCount": 4096,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"text": prompt}],
+                }
+            ],
+            "inferenceConfig": {
+                "maxTokens": 4096,
                 "temperature": 0.3,
                 "topP": 0.9,
-            }
+            },
         }),
     )
 
     response_body = json.loads(response["body"].read())
-    generated_text = response_body.get("results", [{}])[0].get("outputText", "{}")
+    generated_text = (
+        response_body
+        .get("output", {})
+        .get("message", {})
+        .get("content", [{}])[0]
+        .get("text", "{}")
+    )
 
     # Parse JSON from response
     try:
