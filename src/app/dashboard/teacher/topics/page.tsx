@@ -109,15 +109,9 @@ export default function TeacherTopicsPage() {
       }
       const { uploadUrl, s3Key } = await presignRes.json();
 
-      // Step 2: Upload file directly to S3
-      const s3Res = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": uploadFile.type },
-        body: uploadFile,
-      });
-      if (!s3Res.ok) throw new Error("Failed to upload file to storage");
-
-      // Step 3: Create topic record in the database
+      // Step 2: Create topic record in the database BEFORE uploading to S3.
+      // Lambda is triggered by the S3 upload and looks up the topic by s3_key,
+      // so the DB record must exist before the file lands in S3.
       const topicRes = await fetch("/api/topics", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -135,6 +129,14 @@ export default function TeacherTopicsPage() {
         const err = await topicRes.json();
         throw new Error(err.error || "Failed to create topic");
       }
+
+      // Step 3: Upload file directly to S3 (triggers Lambda AI pipeline)
+      const s3Res = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": uploadFile.type },
+        body: uploadFile,
+      });
+      if (!s3Res.ok) throw new Error("Failed to upload file to storage");
 
       toast.success("File uploaded! AI is processing your content…");
       setModalOpen(false);
