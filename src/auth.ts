@@ -95,6 +95,21 @@ export const authConfig: NextAuthConfig = {
           u.role = result.rows[0].role;
           u.onboardingCompleted = result.rows[0].onboarding_completed;
           u.preferredLanguage = result.rows[0].preferred_language;
+
+          // Set a non-HttpOnly cookie so middleware can read the role for routing
+          // This is safe — it's only used for redirect logic, not auth
+          try {
+            const cookieStore = await cookies();
+            cookieStore.set("padhai_role", result.rows[0].role, {
+              httpOnly: false,
+              secure: process.env.NODE_ENV === "production",
+              sameSite: "lax",
+              maxAge: 30 * 24 * 60 * 60,
+              path: "/",
+            });
+          } catch {
+            // May fail in edge cases
+          }
         }
       }
       return session;
